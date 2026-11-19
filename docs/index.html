@@ -1,11 +1,40 @@
 <!doctype html>
+<!-- KabanMusic download page (GitHub Pages, docs/index.html). Rendered by scripts/github.py at every release:
+     0.16.4 https://github.com/mrsetefed/kabanmusic/releases/download/v0.16.4/KabanMusic-0.16.4-win.zip 136 are filled in, so the button is a direct link to the zip. -->
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KabanMusic</title>
-  <meta http-equiv="refresh" content="0; url=https://github.com/mrsetefed/kabanmusic/releases/latest" />
-  <style>body{background:#000;color:#fff;font:16px system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}a{color:#5fd08a}</style>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #000; color: #fff;
+      font: 16px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; padding: 16px; box-sizing: border-box; }
+    .card { background: #121212; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; width: 100%; max-width: 560px; }
+    h1 { margin: 0 0 4px; font-size: 30px; }
+    .sub { color: #b3b3b3; margin: 0 0 24px; }
+    a.btn { display: block; text-align: center; padding: 14px 18px; border-radius: 999px; font-weight: 700; text-decoration: none; background: #5fd08a; color: #07140c; font-size: 17px; }
+    .meta { text-align: center; color: #7a7a7a; font-size: 13px; margin: 8px 0 24px; }
+    ol { padding-left: 20px; margin: 0; color: #ddd; }
+    li { margin-bottom: 10px; }
+    b { color: #fff; }
+    code { background: #1c1c1c; padding: 1px 6px; border-radius: 4px; }
+    .alt { margin-top: 22px; font-size: 14px; color: #b3b3b3; }
+    .alt a { color: #5fd08a; }
+  </style>
 </head>
-<body><p><a href="https://github.com/mrsetefed/kabanmusic/releases/latest">KabanMusic — скачать последнюю версию</a></p></body>
+<body>
+  <div class="card">
+    <h1>KabanMusic</h1>
+    <p class="sub">Музыкальный плеер: YouTube Music, файлы с компьютера, рекомендации Last.fm, статус в Discord.</p>
+    <a class="btn" href="https://github.com/mrsetefed/kabanmusic/releases/download/v0.16.4/KabanMusic-0.16.4-win.zip">Скачать для Windows</a>
+    <div class="meta">версия 0.16.4 · zip, 136 МБ</div>
+    <ol>
+      <li><b>Распакуй</b> архив в обычную папку, например <code>C:\Programs\KabanMusic</code> (не запускай прямо из архива).</li>
+      <li>Запусти <b>KabanMusic.exe</b>. Если Windows покажет синее окно «Система Windows защитила ваш компьютер» — нажми <b>«Подробнее»</b> → <b>«Выполнить в любом случае»</b>: у программы просто нет платной цифровой подписи.</li>
+      <li>Дальше обновления ставятся из самого приложения: Настройки → Обновления.</li>
+    </ol>
+    <p class="alt">Все версии и что в них нового — <a href="https://github.com/mrsetefed/kabanmusic/releases">на GitHub</a>.</p>
+  </div>
+</body>
 </html>
