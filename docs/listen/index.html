@@ -55,9 +55,9 @@
       $('msg').textContent = T.msg;
       $('open').textContent = T.open; $('open').href = app; $('open').hidden = false;
       $('yt').textContent = T.yt; $('yt').href = 'https://music.youtube.com/watch?v=' + v + (at ? '&t=' + at + 's' : ''); $('yt').hidden = false;
-      // the releases page of the repo this site belongs to: <owner>.github.io/<repo>/listen/
-      var owner = location.hostname.split('.')[0], repo = location.pathname.split('/')[1];
-      if (owner && repo) { $('get').textContent = T.get; $('get').href = 'https://github.com/' + owner + '/' + repo + '/releases/latest'; $('get').hidden = false; }
+      // the download page of this site: <owner>.github.io/<repo>/
+      var repo = location.pathname.split('/')[1];
+      if (repo) { $('get').textContent = T.get; $('get').href = '/' + repo + '/'; $('get').hidden = false; }
       $('note').textContent = T.note;
       location.href = app;
     })();
