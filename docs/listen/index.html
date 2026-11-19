@@ -1,0 +1,66 @@
+<!doctype html>
+<!--
+  "Listen along" page behind the Discord button (KabanMusic 0.16). Published from the releases repo via GitHub Pages
+  (docs/listen/index.html). ?v=<YouTube video id>&s=<ms when the friend's track started>.
+  Opens kabanmusic://play?v=…&s=… (the app computes the second itself); without the app — YouTube Music at that second.
+  No external scripts, no tracking.
+-->
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://i.ytimg.com" />
+  <meta name="referrer" content="no-referrer" />
+  <title>KabanMusic — подслушать</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #000; color: #fff;
+      font: 16px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; padding: 16px; box-sizing: border-box; }
+    .card { background: #121212; border: 1px solid #2a2a2a; border-radius: 16px; padding: 28px; width: 100%; max-width: 420px; text-align: center; }
+    img { width: 100%; max-width: 320px; aspect-ratio: 16/9; object-fit: cover; border-radius: 10px; background: #1c1c1c; }
+    h1 { font-size: 22px; margin: 18px 0 6px; }
+    p { color: #b3b3b3; margin: 0 0 20px; }
+    a.btn { display: block; padding: 12px 18px; border-radius: 999px; font-weight: 600; text-decoration: none; margin-top: 10px; }
+    .primary { background: #5fd08a; color: #07140c; }
+    .ghost { background: #181818; color: #fff; border: 1px solid #2a2a2a; }
+    small { display: block; margin-top: 16px; color: #7a7a7a; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img id="pic" alt="" hidden />
+    <h1 id="h">KabanMusic</h1>
+    <p id="msg"></p>
+    <a class="btn primary" id="open" hidden></a>
+    <a class="btn ghost" id="yt" hidden></a>
+    <a class="btn ghost" id="get" hidden></a>
+    <small id="note"></small>
+  </div>
+  <script>
+    (function () {
+      var en = !/^ru|^uk|^be/i.test(navigator.language || '');
+      var T = en
+        ? { h: 'Listen along', msg: 'Opening KabanMusic — the same track from the same second.', open: 'Open in KabanMusic', yt: 'Listen on YouTube Music', get: 'Get KabanMusic', note: 'If nothing happened, KabanMusic is not installed — use the buttons below.', bad: 'The link is broken.' }
+        : { h: 'Подслушать', msg: 'Открываю KabanMusic — тот же трек с той же секунды.', open: 'Открыть в KabanMusic', yt: 'Слушать в YouTube Music', get: 'Скачать KabanMusic', note: 'Если ничего не открылось — KabanMusic не установлен, жми кнопки ниже.', bad: 'Ссылка битая.' };
+      var q = new URLSearchParams(location.search);
+      var v = q.get('v') || '';
+      var s = Number(q.get('s'));
+      var $ = function (id) { return document.getElementById(id); };
+      $('h').textContent = T.h;
+      if (!/^[\w-]{11}$/.test(v)) { $('msg').textContent = T.bad; return; }
+      var at = s > 1e12 ? Math.max(0, Math.floor((Date.now() - s) / 1000)) : 0;
+      var app = 'kabanmusic://play?v=' + v + (s > 1e12 ? '&s=' + Math.floor(s) : '');
+      $('pic').src = 'https://i.ytimg.com/vi/' + v + '/hqdefault.jpg';
+      $('pic').hidden = false;
+      $('msg').textContent = T.msg;
+      $('open').textContent = T.open; $('open').href = app; $('open').hidden = false;
+      $('yt').textContent = T.yt; $('yt').href = 'https://music.youtube.com/watch?v=' + v + (at ? '&t=' + at + 's' : ''); $('yt').hidden = false;
+      // the releases page of the repo this site belongs to: <owner>.github.io/<repo>/listen/
+      var owner = location.hostname.split('.')[0], repo = location.pathname.split('/')[1];
+      if (owner && repo) { $('get').textContent = T.get; $('get').href = 'https://github.com/' + owner + '/' + repo + '/releases/latest'; $('get').hidden = false; }
+      $('note').textContent = T.note;
+      location.href = app;
+    })();
+  </script>
+</body>
+</html>
