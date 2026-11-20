@@ -1,0 +1,11 @@
+*.zip
+*.asar
+*.exe
+*.tmp
+__pycache__/
+*.py[cod]
+/.github-cli/
+/kabanmusic-inspect/
+/.env
+/.env.*
+*.log
