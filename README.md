@@ -26,7 +26,7 @@
 Опубликованная сборка предназначена для Windows x64. Профиль хранится отдельно от программы в `%APPDATA%\KabanMusic`. Для ручного отката доступны [предыдущие релизы](https://github.com/mrsetefed/kabanmusic/releases). Чтобы сверить архив, сравни SHA-256 с дайджестом файла в GitHub Releases:
 
 ```powershell
-Get-FileHash .\KabanMusic-0.18.6-win.zip -Algorithm SHA256
+Get-FileHash .\KabanMusic-0.18.12-win.zip -Algorithm SHA256
 ```
 
 ## Первые шаги
@@ -55,8 +55,8 @@ Get-FileHash .\KabanMusic-0.18.6-win.zip -Algorithm SHA256
 3. Выполни команды из корня репозитория:
 
 ```powershell
-python tools/build_playback_fix.py --version 0.18.6 --ui-fix
-python -m zipfile -t KabanMusic-0.18.6-ui-fix-win.zip
+python tools/build_playback_fix.py --version 0.18.12 --ui-fix --youtube-single-pin
+python -m zipfile -t KabanMusic-0.18.12-win.zip
 ```
 
 Скрипт заменяет нужные части `app.asar`, обновляет его контрольные суммы и записывает отдельный ZIP. Чтобы подготовить архив для стабильного канала, имя файла в релизе должно быть `KabanMusic-<версия>-win.zip`, тег — `v<версия>`, а номер внутри приложения должен совпадать с тегом. Автообновление читает последний стабильный GitHub Release. Сохраняй предыдущий релиз для ручного отката и проверяй, что новая версия открывается через [Latest](https://github.com/mrsetefed/kabanmusic/releases/latest).

@@ -159,16 +159,16 @@ def patch_ui_css(code):
     start = code.index(".sidebar-section {")
     end = code.index("/* main */", start)
     code = code[:start] + """.sidebar-section { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0 2px; padding: 5px 4px 0 10px; border-top: 1px solid var(--line); }
-.sidebar-section h2 { margin: 0; font-size: 13px; font-weight: 700; color: var(--text); }
+.sidebar-section h2 { margin: 0; font-size: 15px; font-weight: 650; color: var(--text); }
 .sidebar-playlist-add.icon-btn { width: 28px; height: 28px; font-size: 21px; line-height: 1; flex: none; }
 .sidebar-playlists { overflow-y: auto; overscroll-behavior: contain; min-height: 0; flex: 1; }
 .sidebar-playlist-group + .sidebar-playlist-group { margin-top: 6px; }
-.sidebar-playlist-group summary { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px; border-radius: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.sidebar-playlist-group summary { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; }
 .sidebar-playlist-group summary::-webkit-details-marker { display: none; }
 .sidebar-playlist-group summary svg { width: 14px; height: 14px; flex: none; transform: rotate(-90deg); }
 .sidebar-playlist-group[open] summary svg { transform: none; }
 .sidebar-playlist-group summary:hover, .sidebar-playlist-row:hover { color: var(--text); background: var(--panel); }
-.sidebar-playlist-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 3px 8px 3px 18px; border-radius: 6px; color: var(--muted); text-align: left; }
+.sidebar-playlist-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 3px 8px 3px 18px; border-radius: 6px; font-size: 13px; color: var(--artist-text); text-align: left; }
 .sidebar-playlist-row svg { width: 16px; height: 16px; flex: none; }
 .sidebar-playlist-row span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sidebar-playlist-row[aria-current="page"] { background: var(--panel-2); color: var(--text); box-shadow: inset 2px 0 var(--accent); }
@@ -841,6 +841,10 @@ def patch_mini_main(code):
     code = replace_once(code, 'function miniState() {', 'var miniRepeatMode = "off";\nfunction miniState() {')
     code = replace_once(code, '    liked: nowPlaying2?.liked ?? false,\n    lang:',
         '    liked: nowPlaying2?.liked ?? false,\n    repeat: miniRepeatMode,\n    lang:')
+    code = replace_once(code, '    playing: nowPlaying2?.playing ?? false,',
+        '    playing: nowPlaying2?.playing ?? false,\n    buffering: nowPlaying2?.buffering ?? false,')
+    code = replace_once(code, '      playing: !!info3.playing,',
+        '      playing: !!info3.playing,\n      buffering: !!info3.buffering,')
     code = replace_once(code, '''    time: progress.time,
     duration: progress.duration,
     pinned:''', '''    trackKey: nowPlaying2?.trackKey,
@@ -979,6 +983,10 @@ def patch_mini_renderer(code, host_renderer):
     $("pin").classList''')
     code = replace_once(code, '    if (!e.target.closest("button")) api.miniToggle();',
         '    if (!e.target.closest("button, input")) api.miniToggle();')
+    code = replace_once(code, '    $("artist").textContent = s.artist ?? "";',
+        '''    const artist = s.artist ?? "";
+    const loading = s.lang === "en" ? "Buffering…" : "Буферизация…";
+    $("artist").textContent = s.buffering ? loading + (artist ? " · " + artist : "") : artist;''')
     code = replace_once(code, '  api.onMiniState((s) => {\n    state = s;', '''  const seek = $("seek");
   let seekTrack = null;
   const clock = (seconds) => {
@@ -1029,12 +1037,637 @@ def patch_discord_art(code):
       small_image: "kaban",''')
 
 
-def patch_asar(asar, version=None, ui_fix=False):
+def patch_playback_stutter_main(code):
+    code = replace_once(code, '''    await exec(HOLD_JS(videoId));
+  }
+  if (revision === playbackRevision) loadedAt = Date.now();''',
+        '''    await exec(HOLD_JS(videoId, true));
+  }
+  if (revision === playbackRevision) loadedAt = Date.now();''')
+    code = replace_once(code, '''  await exec(HOLD_JS(videoId));
+  for (let i2 = 0; i2 < 20; i2++) {''',
+        '''  await exec(HOLD_JS(videoId, true));
+  for (let i2 = 0; i2 < 20; i2++) {''')
+    code = replace_once(code, "var HOLD_JS = (videoId) =>", "var HOLD_JS = (videoId, pinOnNavigation = false) =>")
+    code = replace_once(code, "  clearInterval(window.__ptFade);const v=document.querySelector('video');",
+        """  if(${pinOnNavigation}){
+    try{document.getElementById('movie_player')?.setPlaybackQualityRange?.('tiny','tiny');}catch(error){}
+  }
+  clearInterval(window.__ptFade);const v=document.querySelector('video');""")
+    start = code.index("      // we only need the sound: keep the video at the lowest quality")
+    end = code.index("      const vd=", start)
+    code = code[:start] + code[end:]
+    code = replace_once(code, """      const dg=window.__ptDiagEv?window.__ptDiagEv.splice(0):[];
+      return {id:vd?vd.video_id:null, st:p.getPlayerState(),""",
+        '''      const media=document.querySelector('video');
+      const playerState=p.getPlayerState();
+      const waiting=!!media&&!media.paused&&!media.ended&&media.readyState<3;
+      ${QUALITY_GUARD_JS};
+      const dg=window.__ptDiagEv?window.__ptDiagEv.splice(0):[];
+      return {id:vd?vd.video_id:null, st:playerState, waiting,''')
+    code = replace_once(code, "      state,\n      time: s.t || 0,", "      state,\n      waiting: s.waiting,\n      time: s.t || 0,")
+    code = replace_once(code, "    if (s.dg?.length) logHiccups(s.id, s.dg);",
+        '''    const diagnostics = s.dg?.filter((event) => event.id === s.id).map((event) => event.line);
+    if (diagnostics?.length) logHiccups(s.id, diagnostics);''')
+    start = code.index("var DIAG_JS = ")
+    end = code.index("var logBusy", start)
+    marker = chr(96)
+    quality_guard = r'''(()=>{
+  const id=vd?.video_id, loadAt=window.__ptLoadAt;
+  if(!id||id!==window.__ptHoldId||!Number.isFinite(loadAt)) return;
+  const now=performance.now();
+  let drift=window.__ptQualityDrift;
+  if(!drift||drift.id!==id||drift.loadAt!==loadAt){
+    drift=window.__ptQualityDrift={id,loadAt,quality:null,since:0,lastPin:-Infinity};
+  }
+  if(ad||window.__ptHold||playerState!==1||!media||media.paused||media.seeking||waiting){
+    drift.quality=null;return;
+  }
+  const quality=p.getPlaybackQuality?.();
+  if(!quality||quality==='tiny'||quality==='auto'||quality==='unknown'){
+    drift.quality=null;return;
+  }
+  if(quality!==drift.quality){
+    drift.quality=quality;drift.since=now;return;
+  }
+  // The initial load already pins tiny. Only force another switch after persistent drift.
+  if(now-loadAt<3500||now-drift.since<750||now-drift.lastPin<12000||
+    !p.setPlaybackQualityRange) return;
+  drift.lastPin=now;
+  let result='requested';
+  try{
+    p.setPlaybackQualityRange('tiny','tiny');
+    p.setPlaybackQuality?.('tiny');
+  }catch(error){result='failed';}
+  if(window.__ptDiagEv?.length<50){
+    const elapsed=((now-loadAt)/1000).toFixed(2);
+    window.__ptDiagEv.push({id,line:'quality pin '+result+' '+quality+' -> tiny at t='+
+      media.currentTime.toFixed(2)+'s ('+elapsed+'s after load)'});
+  }
+})()'''
+    diagnostics = r'''(()=>{if(window.__ptDiag)return;window.__ptDiag=true;window.__ptDiagEv=[];
+  let previous=null, freeze=null;
+  setInterval(()=>{
+    const v=document.querySelector('video'),p=document.getElementById('movie_player');
+    const id=p?.getVideoData?.()?.video_id, state=p?.getPlayerState?.();
+    if(!v||!id||id!==window.__ptHoldId||window.__ptHold||v.paused||v.ended||v.seeking||
+      (state!==1&&state!==3)||p.classList.contains('ad-showing')||
+      v.currentTime<0.3||(Number.isFinite(v.duration)&&v.duration-v.currentTime<0.25)){
+      previous=null;freeze=null;return;
+    }
+    const now=performance.now(), time=v.currentTime, loadAt=window.__ptLoadAt;
+    const same=previous&&previous.id===id&&previous.v===v&&previous.loadAt===loadAt;
+    const delta=same?time-previous.time:Infinity;
+    if(Math.abs(delta)<0.001){
+      if(!freeze){
+        let ahead=0, stats='';
+        for(let i=0;i<v.buffered.length;i++){
+          if(v.buffered.start(i)<=time&&time<v.buffered.end(i)) ahead=v.buffered.end(i)-time;
+        }
+        try{const info=p.getStatsForNerds();stats=(info.codecs||'')+' '+(info.resolution||'');}catch(e){}
+        freeze={since:previous.now,time,after:Math.max(0,previous.now-loadAt),ahead,ready:v.readyState,
+          quality:p.getPlaybackQuality?.()||'unknown',stats};
+      }
+    }else{
+      if(same&&delta>0&&delta<0.75&&freeze&&now-freeze.since>=120&&window.__ptDiagEv.length<50){
+        const f=freeze;
+        const line='freeze '+Math.round(now-f.since)+'ms at t='+f.time.toFixed(2)+'s ('+
+          (f.after/1000).toFixed(2)+'s after load) buffer+'+f.ahead.toFixed(1)+'s ready='+f.ready+' q='+f.quality+' '+f.stats;
+        window.__ptDiagEv.push({id,line});
+      }
+      freeze=null;
+    }
+    previous={id,v,loadAt,now,time};
+  },20);})()'''
+    scripts = (
+        "var QUALITY_GUARD_JS = " + marker + quality_guard + marker + ";\n"
+        "var DIAG_JS = " + marker + diagnostics + marker + ";\n"
+    )
+    return code[:start] + scripts + code[end:]
+
+
+def patch_youtube_single_pin(code):
+    # Keep the tiny range before loading, without reapplying it to the newly loading player.
+    code = replace_once(code, """      p.loadVideoById(${JSON.stringify(videoId)});
+      p.setPlaybackQualityRange&&p.setPlaybackQualityRange('tiny','tiny');return true})()`""",
+        """      p.loadVideoById(${JSON.stringify(videoId)});return true})()`""")
+    code = replace_once(code, "  let previous=null, freeze=null;", "  let previous=null, freeze=null, qualitySample=null;")
+    return replace_once(code, """    const now=performance.now(), time=v.currentTime, loadAt=window.__ptLoadAt;
+    const same=previous""",
+        """    const now=performance.now(), time=v.currentTime, loadAt=window.__ptLoadAt;
+    if(!qualitySample||qualitySample.id!==id||qualitySample.loadAt!==loadAt||now-qualitySample.at>=100){
+      const sameLoad=qualitySample?.id===id&&qualitySample.loadAt===loadAt;
+      const last=sameLoad?qualitySample.quality:null;
+      const quality=p.getPlaybackQuality?.();
+      if(quality&&quality!=='unknown'&&quality!==last&&window.__ptDiagEv.length<50){
+        window.__ptDiagEv.push({id,line:'quality '+(last?last+' -> ':'')+quality+' at t='+
+          time.toFixed(2)+'s ('+((now-loadAt)/1000).toFixed(2)+'s after load)'});
+      }
+      qualitySample={id,loadAt,at:now,quality:quality&&quality!=='unknown'?quality:last};
+    }
+    const same=previous""")
+
+
+def patch_playback_stutter_renderer(code):
+    line, = (line for line in code.splitlines(keepends=True) if 'this.audio.addEventListener("waiting",' in line)
+    code = replace_once(code, line, line.replace('this.engine === "audio" &&', 'this.engine === "audio" && !this.audio.paused &&'))
+    code = replace_once(code, '''    pause() {
+      void api.ytCommand("pause");
+      this.audio.pause();
+      this.playing = false;''', '''    pause() {
+      void api.ytCommand("pause");
+      this.audio.pause();
+      this.playing = false;
+      this.buffering = false;''')
+    code = replace_once(code, '      this.buffering = s.state === 3 || s.state === -1;',
+        '      this.buffering = s.state !== 2 && (s.waiting === true || s.state === 3 || s.state === -1);')
+    code = replace_once(code, '''        if (seq !== this.loadSeq) return;
+        this.playing = true;
+        void api.nowPlaying(t2);''',
+        '''        if (seq !== this.loadSeq) return;
+        if (this.engine === "audio") this.playing = !this.audio.paused;
+        void api.nowPlaying(t2);''')
+    code = replace_once(code, '''      } catch (e) {
+        if (seq !== this.loadSeq) return;
+        toast(errMsg(e), true);
+      }
+      this.render();
+      markPlaying();''', '''      } catch (e) {
+        if (seq !== this.loadSeq) return;
+        this.buffering = false;
+        toast(errMsg(e), true);
+      }
+      this.render();
+      markPlaying();''')
+    code = replace_once(code, 'this.playing, t2 && isLiked(t2), t2?.thumbnail]',
+        'this.playing, this.buffering, t2 && isLiked(t2), t2?.thumbnail]')
+    return replace_once(code, '          playing: this.playing,\n          liked: isLiked(t2),',
+        '          playing: this.playing,\n          buffering: this.buffering,\n          liked: isLiked(t2),')
+
+
+def patch_startup_main(code):
+    line, = (line for line in code.splitlines(keepends=True) if line.startswith("var ACRYLIC = "))
+    code = replace_once(code, line, "")
+    code = replace_once(code, '''    // Windows 11 (22H2+): acrylic behind the black frame — the CSS paints it at 82 % opacity for a slight see-through.
+    ...ACRYLIC ? { backgroundMaterial: "acrylic", backgroundColor: "#00000000" } : { backgroundColor: "#000000" },
+    ...process.platform === "win32" ? { accentColor: "#161616" } : {},''',
+        '''    backgroundColor: "#000000",
+    ...process.platform === "win32" ? { backgroundMaterial: "none", accentColor: "#161616" } : {},''')
+    code = replace_once(code, 'titleBarOverlay: { color: ACRYLIC ? "#00000000" : "#000000",',
+        'titleBarOverlay: { color: "#000000",')
+    code = replace_once(code, '''  createEngine();
+  setInterval(poll, 500);''',
+        '''  setInterval(poll, 500);''')
+    code = replace_once(code, 'function startEngine() {\n  startEngineNow();',
+        'function startEngine() {\n  if (!engine || engine.isDestroyed()) createEngine();\n  startEngineNow();')
+    code = replace_once(code, 'async function login() {\n  if (!engine) return;',
+        '''async function login() {
+  if (!engine || engine.isDestroyed()) {
+    createEngine();
+    startEngineNow = () => {};
+    engineReady = Promise.resolve();
+  }''')
+    code = replace_once(code, 'async function load(videoId) {\n',
+        'async function load(videoId) {\n  if (isLoginWindow) throw new Error(t("Заверши вход в YouTube Music и попробуй ещё раз."));\n')
+    code = replace_once(code, 'var EN = {', '''var EN = {
+  "Заверши вход в YouTube Music и попробуй ещё раз.": "Finish signing in to YouTube Music and try again.",''')
+    code = replace_once(code, '''  win.webContents.once("did-finish-load", () => {
+    mark("ui");
+    uiReady = true;
+    if (pendingLink) setTimeout(() => (send3("openLink", pendingLink), pendingLink = null), 500);
+    setTimeout(writeStartupLog, 50);
+  });
+  win.once("ready-to-show", () => {
+    mark("shown");
+    if (saved?.maximized) win?.maximize();
+    if (!process.argv.includes("--hidden")) win?.show();
+    setTimeout(() => {
+      startEngine();
+      void refreshAccountInfo().then((changed2) => changed2 && send3("accountChange"));
+    }, 600);
+  });
+  void win.loadFile(RENDERER);''',
+        '''  win.webContents.once("did-finish-load", () => mark("document"));
+  win.once("ready-to-show", () => mark("paint"));
+  void win.loadFile(RENDERER);
+  if (!process.argv.includes("--hidden")) {
+    if (saved?.maximized) win.maximize();
+    win.show();
+    mark("shown");
+  } else if (saved?.maximized) {
+    win.once("show", () => win?.maximize());
+  }''')
+    code = replace_once(code, '  handle("appVersion", () => import_electron15.app.getVersion());',
+        '''  handle("appVersion", () => import_electron15.app.getVersion());
+  handle("startupPrefs", () => {
+    const { lang, volume, playMode } = getStore();
+    return { lang, volume, playMode, version: import_electron15.app.getVersion() };
+  });''')
+    code = replace_once(code, '  import_electron15.ipcMain.on("miniToggle",',
+        '''  import_electron15.ipcMain.on("uiLoaded", (e) => {
+    if (!fromUi(e) || uiReady) return;
+    uiReady = true;
+    mark("interactive");
+    if (pendingLink) {
+      const link = pendingLink;
+      pendingLink = null;
+      send3("openLink", link);
+    }
+    setTimeout(writeStartupLog, 150);
+    setTimeout(() => {
+      if (quitting2) return;
+      if (!isLoginWindow) startEngine();
+      void refreshAccountInfo().then((changed2) => changed2 && send3("accountChange"));
+    }, 1600);
+  });
+  import_electron15.ipcMain.on("miniToggle",''')
+    code = replace_once(code, '''  const firstLink = process.argv.find((a) => a.startsWith("kabanmusic://"));
+  if (firstLink) void openLink(firstLink);
+''', "")
+    code = replace_once(code, '''  init(() => send3("localChange"));
+  ensureDownloads(() => all().filter((t2) => t2.downloaded).sort((a, b) => b.mtime - a.mtime));
+  initYt({''', "  initYt({")
+    code = replace_once(code, '''  createWindow();
+  setupShell();''', '''  createWindow();
+  init(() => send3("localChange"));
+  ensureDownloads(() => all().filter((t2) => t2.downloaded).sort((a, b) => b.mtime - a.mtime));
+  const firstLink = process.argv.find((a) => a.startsWith("kabanmusic://"));
+  if (firstLink) void openLink(firstLink);
+  setupShell();''')
+    code = replace_once(code, '  const loggedIn2 = await isLoggedIn();\n  return {\n    google:',
+        '  const [loggedIn2, vkLoggedIn] = await Promise.all([isLoggedIn(), loggedIn()]);\n  return {\n    google:')
+    return replace_once(code, '    vk: { loggedIn: await loggedIn() }',
+        '    vk: { loggedIn: vkLoggedIn }')
+
+
+def patch_startup_renderer(code):
+    code = replace_once(code, '''    const st0 = await api.status().catch(() => null);
+    APP_VERSION = await api.appVersion().catch(() => "");''',
+        '''    const prefs = await api.startupPrefs().catch(() => null);
+    APP_VERSION = prefs?.version ?? "";''')
+    code = replace_once(code, '    if (st0?.lang === "en") {', '    if (prefs?.lang === "en") {')
+    code = replace_once(code, '''    void api.status().then((st) => {
+      player.volume = st.volume;
+      syncVolumeUi();
+      player.setPlayMode(st.playMode);
+    });
+    player.render();''', '''    if (prefs) {
+      player.volume = prefs.volume;
+      player.setPlayMode(prefs.playMode);
+      syncVolumeUi();
+    }
+    player.render();''')
+    code = replace_once(code, '    window.__uiReadyAt = Math.round(performance.now());',
+        '    window.__uiReadyAt = Math.round(performance.now());\n    api.uiLoaded();')
+    start = code.index("  async function viewHome()")
+    end = code.index("  var lastQuery", start)
+    home = code[start:end]
+    prefix = '      h("div", { class: "sub" }, status2?.google.loggedIn ?'
+    line, = (line for line in home.splitlines(keepends=True) if line.startswith(prefix))
+    message = line.removeprefix('      h("div", { class: "sub" }, ').removesuffix("),\n")
+    home = replace_once(home, "    const status2 = await api.status().catch(() => null);",
+        '    const subtitle = h("div", { class: "sub", hidden: true });')
+    home = replace_once(home, line, "      subtitle,\n")
+    home = replace_once(home, "    void api.historyList(0, 200).then((entries) => {",
+        f'''    void api.status().then((status2) => {{
+      if (!subtitle.isConnected) return;
+      subtitle.textContent = {message};
+      subtitle.hidden = false;
+    }}).catch(() => {{}});
+    void api.historyList(0, 200).then((entries) => {{''')
+    return code[:start] + home + code[end:]
+
+
+def patch_startup_preload(code):
+    return replace_once(code, '  appVersion: inv("appVersion"),', '''  appVersion: inv("appVersion"),
+  startupPrefs: inv("startupPrefs"),
+  uiLoaded: () => import_electron.ipcRenderer.send("uiLoaded"),''')
+
+
+def patch_window_shell_main(code):
+    code = replace_once(code, 'var import_node_os3 = require("node:os");\n', "")
+    code = replace_once(code, '''    backgroundColor: "#000000",
+    ...process.platform === "win32" ? { backgroundMaterial: "none", accentColor: "#161616" } : {},
+    autoHideMenuBar: true,
+    // own dark title bar; Windows still draws min/max/close (and snap layouts) on top of it
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#000000", symbolColor: "#b3b3b3", height: 32 },''',
+        '''    backgroundColor: "#000000",
+    frame: false,
+    ...process.platform === "win32" ? { backgroundMaterial: "none", accentColor: "#000000", roundedCorners: false } : {},
+    autoHideMenuBar: true,''')
+    code = replace_once(code, '''  win.webContents.once("did-finish-load", () => mark("document"));
+  win.once("ready-to-show", () => mark("paint"));
+  void win.loadFile(RENDERER);
+  if (!process.argv.includes("--hidden")) {
+    if (saved?.maximized) win.maximize();
+    win.show();
+    mark("shown");
+  } else if (saved?.maximized) {
+    win.once("show", () => win?.maximize());
+  }
+  updateThumbar();''',
+        '''  mark("window-created");
+  const window = win;
+  const publishBounds = () => send3("windowMaximized", window.isMaximized());
+  window.on("maximize", publishBounds);
+  window.on("unmaximize", publishBounds);
+  window.webContents.once("did-finish-load", () => mark("document"));
+  window.once("ready-to-show", () => {
+    mark("paint");
+    if (process.argv.includes("--hidden") || window.isVisible()) return;
+    window.show();
+    mark("shown");
+    if (uiReady) setTimeout(writeStartupLog, 150);
+  });
+  if (saved?.maximized) window.once("show", () => window.maximize());
+  void window.loadFile(RENDERER);''')
+    code = replace_once(code, '    mark("interactive");\n    if (pendingLink) {',
+        '    mark("interactive");\n    send3("windowMaximized", win?.isMaximized() ?? false);\n    if (pendingLink) {')
+    code = replace_once(code, '''    setTimeout(writeStartupLog, 150);
+    setTimeout(() => {''', '''    setTimeout(writeStartupLog, win?.isVisible() || process.argv.includes("--hidden") ? 150 : 4000);
+    setTimeout(() => {
+      if (!quitting2) finishWindowsStartup();
+    }, 600);
+    setTimeout(() => {''')
+    code = replace_once(code, '  import_electron15.ipcMain.on("uiLoaded",',
+        '''  import_electron15.ipcMain.on("windowAction", (e, action) => {
+    if (!fromUi(e) || !win || win.isDestroyed()) return;
+    if (action === "minimize") win.minimize();
+    else if (action === "toggleMaximize") win.isMaximized() ? win.unmaximize() : win.maximize();
+    else if (action === "close") win.close();
+  });
+  import_electron15.ipcMain.on("uiLoaded",''')
+    code = replace_once(code, '''  if (!import_electron15.app.isPackaged) import_electron15.app.setAsDefaultProtocolClient("kabanmusic", process.execPath, [(0, import_node_path16.join)(__dirname, "..")]);
+  else import_electron15.app.setAsDefaultProtocolClient("kabanmusic");
+''', "")
+    code = replace_once(code, '''  import_electron15.protocol.handle("kaban-vk", (req) => serve2(req));
+  initYt({''',
+        '''  import_electron15.protocol.handle("kaban-vk", (req) => serve2(req));
+  mark("ipc");
+  createWindow();
+  initYt({''')
+    code = replace_once(code, '''  createWindow();
+  init(() => send3("localChange"));''',
+        '''  mark("youtube-session");
+  init(() => send3("localChange"));''')
+    code = replace_once(code, 'function writeStartupLog() {\n  try {',
+        '''var startupLogWritten = false;
+function writeStartupLog() {
+  if (startupLogWritten) return;
+  startupLogWritten = true;
+  try {''')
+    return replace_once(code, '''  setupShell();
+  ensureStartMenuShortcut();
+  applyAutostart();
+});
+var wasLoggedIn''',
+        '''});
+function finishWindowsStartup() {
+  setupShell();
+  updateThumbar();
+  ensureStartMenuShortcut();
+  applyAutostart();
+  if (!import_electron15.app.isPackaged) import_electron15.app.setAsDefaultProtocolClient("kabanmusic", process.execPath, [(0, import_node_path16.join)(__dirname, "..")]);
+  else import_electron15.app.setAsDefaultProtocolClient("kabanmusic");
+}
+var wasLoggedIn''')
+
+
+def patch_native_window_startup(code):
+    start = code.index("function createWindow() {")
+    end = code.index("function send3(", start)
+    window = code[start:end]
+    window = replace_once(window, '  const saved = getStore().window;\n  win = new',
+        '  const saved = getStore().window;\n  mark("before-window");\n  win = new')
+    window = replace_once(window, '    icon: asset2("icon.png"),\n', "")
+    window = replace_once(window,
+        '    ...process.platform === "win32" ? { backgroundMaterial: "none", accentColor: "#000000", roundedCorners: false } : {},',
+        '    ...process.platform === "win32" ? { thickFrame: false } : {},')
+    window = replace_once(window, '  import_electron15.Menu.setApplicationMenu(null);',
+        '  mark("native-window");')
+    window = replace_once(window, '  mark("window-created");',
+        '  mark("window-hooks");')
+    code = code[:start] + window + code[end:]
+    return replace_once(code, '''function finishWindowsStartup() {
+  setupShell();''', '''function finishWindowsStartup() {
+  import_electron15.Menu.setApplicationMenu(null);
+  if (process.platform !== "darwin") win?.setIcon(asset2("icon.ico"));
+  setupShell();''')
+
+
+def patch_startup_diagnostics(code):
+    code = replace_once(code, '  mark("before-window");\n  win = new',
+        '''  import_electron15.app.once("web-contents-created", () => mark("web-contents"));
+  import_electron15.app.once("browser-window-created", () => mark("browser-window"));
+  const windowCpuStart = process.cpuUsage();
+  mark("before-window");
+  win = new''')
+    code = replace_once(code, '  mark("native-window");',
+        '''  mark("native-window");
+  const windowCpu = process.cpuUsage(windowCpuStart);
+  marks.push(`window-cpu ${Math.round((windowCpu.user + windowCpu.system) / 1e3)}`);''')
+    return replace_once(code, '    const old = (0, import_node_fs14.existsSync)(f)',
+        '''    const browserProcess = import_electron15.app.getAppMetrics().find((metric) => metric.pid === process.pid);
+    if (browserProcess?.creationTime > 0) {
+      marks.unshift(`before-js ${Math.max(0, Math.round(T0 - browserProcess.creationTime))}`);
+    }
+    const old = (0, import_node_fs14.existsSync)(f)''')
+
+
+def patch_update_copy(code):
+    code = replace_once(code, 'var import_node_path = require("node:path");',
+        '''var import_node_path = require("node:path");
+// The updater copies app.asar itself, not Electron's virtual files inside it.
+var updateFs = require("original-fs");''')
+    code = replace_once(code, '''        (0, import_node_fs.cpSync)(src, appDir, { recursive: true, force: true });
+        log(`copied (attempt ${attempt})`);''',
+        '''        let unchanged = 0;
+        const fromBuffer = Buffer.alloc(1024 * 1024);
+        const toBuffer = Buffer.alloc(fromBuffer.length);
+        const fromArchive = import_node_path.join(src, "resources", "app.asar");
+        const toArchive = import_node_path.join(appDir, "resources", "app.asar");
+        const hasArchive = updateFs.lstatSync(fromArchive, { throwIfNoEntry: false })?.isFile();
+        updateFs.cpSync(src, appDir, {
+          recursive: true,
+          force: true,
+          filter(from, to) {
+            if (hasArchive && from === fromArchive) return false;
+            if (!sameUpdateFile(from, to, fromBuffer, toBuffer)) return true;
+            unchanged++;
+            return false;
+          }
+        });
+        if (hasArchive) replaceUpdateArchive(fromArchive, toArchive);
+        log(`copied (attempt ${attempt}, ${unchanged} files unchanged)`);''')
+    return replace_once(code, 'function alive(pid) {', '''function replaceUpdateArchive(from, to) {
+  const stagingDir = updateFs.mkdtempSync(import_node_path.join(import_node_path.dirname(to), ".kaban-update-"));
+  const stagedArchive = import_node_path.join(stagingDir, "app.asar");
+  try {
+    updateFs.copyFileSync(from, stagedArchive);
+    updateFs.renameSync(stagedArchive, to);
+  } finally {
+    updateFs.rmSync(stagedArchive, { force: true });
+    updateFs.rmdirSync(stagingDir);
+  }
+}
+// Preserve known-good runtime files when an update only changes app.asar.
+function sameUpdateFile(from, to, fromBuffer, toBuffer) {
+  const source = updateFs.lstatSync(from);
+  if (!source.isFile()) return false;
+  const target = updateFs.lstatSync(to, { throwIfNoEntry: false });
+  if (!target?.isFile() || target.size !== source.size) return false;
+  const fromFd = updateFs.openSync(from, "r");
+  try {
+    const toFd = updateFs.openSync(to, "r");
+    try {
+      for (let offset = 0; offset < source.size; offset += fromBuffer.length) {
+        const length = Math.min(fromBuffer.length, source.size - offset);
+        if (updateFs.readSync(fromFd, fromBuffer, 0, length, offset) !== length ||
+            updateFs.readSync(toFd, toBuffer, 0, length, offset) !== length ||
+            !fromBuffer.subarray(0, length).equals(toBuffer.subarray(0, length))) return false;
+      }
+      return true;
+    } finally {
+      updateFs.closeSync(toFd);
+    }
+  } finally {
+    updateFs.closeSync(fromFd);
+  }
+}
+function alive(pid) {''')
+
+
+def patch_window_shell_html(code):
+    return replace_once(code, '  <div class="titlebar"><img src="../assets/icon.png" alt="" /><span id="titleText">KabanMusic</span></div>',
+        '''  <div class="titlebar">
+    <img src="../assets/icon.png" alt="" /><span id="titleText">KabanMusic</span>
+    <div class="window-controls">
+      <button id="windowMinimize" title="Свернуть"><span aria-hidden="true"></span></button>
+      <button id="windowMaximize" title="Развернуть"><span aria-hidden="true"></span></button>
+      <button id="windowClose" title="Закрыть"><span aria-hidden="true"></span></button>
+    </div>
+  </div>''')
+
+
+def patch_window_shell_css(code):
+    code = replace_once(code, 'user-select: none; padding-right: 150px; }',
+        'user-select: none; padding-right: 0; }')
+    return replace_once(code, '.titlebar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+        '''.titlebar #titleText { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.window-controls { display: flex; align-self: stretch; flex: none; -webkit-app-region: no-drag; }
+.window-controls button { position: relative; width: 46px; display: grid; place-items: center; color: #b3b3b3; }
+.window-controls button:hover { color: #fff; background: #262626; }
+.window-controls button:focus-visible { outline: 1px solid var(--accent); outline-offset: -2px; }
+.window-controls #windowClose:hover { background: #c42b1c; }
+.window-controls span { width: 10px; height: 10px; display: block; }
+#windowMinimize span { height: 0; border-top: 1px solid currentColor; }
+#windowMaximize span { border: 1px solid currentColor; }
+#windowMaximize.is-maximized span { width: 8px; height: 8px; transform: translate(-1px, 1px); box-shadow: 2px -2px #000, 3px -3px currentColor; }
+#windowClose span::before, #windowClose span::after { content: ""; position: absolute; width: 12px; height: 1px; left: calc(50% - 6px); top: 50%; background: currentColor; transform: rotate(45deg); }
+#windowClose span::after { transform: rotate(-45deg); }''')
+
+
+def patch_typography_css(code):
+    code = replace_once(code, "  --muted: #b3b3b3;", """  --muted: #b3b3b3;
+  --artist-text: #c7c7c7;
+  --track-meta: #969696;""")
+    code = replace_once(code, "h1 { font-size: 32px; margin:",
+        "h1 { font-size: 34px; line-height: 1.15; margin:")
+    code = replace_once(code, "h2 { font-size: 20px; margin:",
+        "h2 { font-size: 22px; line-height: 1.25; font-weight: 650; margin:")
+    code = replace_once(code, """.t-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.t-artist, .t-album, .t-reason { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.t-reason { color: var(--dim); font-size: 12px; }
+.t-dur { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }""",
+        """.t-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; line-height: 20px; font-weight: 650; }
+.t-artist, .t-album, .t-reason { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.t-artist { color: var(--artist-text); font-size: 13px; line-height: 18px; }
+.t-album, .t-reason, .t-dur, .t-num { color: var(--track-meta); font-size: 12px; }
+.t-dur { text-align: right; font-variant-numeric: tabular-nums; }""")
+    code = replace_once(code, ".card .c-title { font-weight: 600;",
+        ".card .c-title { font-size: 15px; font-weight: 650;")
+    code = replace_once(code, ".np-title { font-weight: 600;",
+        ".np-title { font-size: 16px; line-height: 22px; font-weight: 650;")
+    return replace_once(code,
+        ".np-artist { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center; }",
+        """.np-artist { color: var(--artist-text); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.np-artist-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-artist .badge { flex: none; }""")
+
+
+def patch_window_shell_renderer(code):
+    code = replace_once(code, '[badge(t2.source), t2.artist] : []',
+        '[h("span", { class: "np-artist-name", title: t2.artist }, t2.artist), badge(t2.source)] : []')
+    code = replace_once(code, '    "Переношу из YouTube Music…": "Importing from YouTube Music…",',
+        '''    "Переношу из YouTube Music…": "Importing from YouTube Music…",
+    "Свернуть": "Minimize",
+    "Развернуть": "Maximize",
+    "Восстановить окно": "Restore window",''')
+    code = replace_once(code, '.sidebar button, .sidebar-playlist-group summary, .np button, #menu button',
+        '.sidebar button, .sidebar-playlist-group summary, .np button, #menu button, .window-controls button')
+    return replace_once(code, '    hydrateIcons();\n    document.querySelectorAll(".nav")',
+        '''    hydrateIcons();
+    $("windowMinimize").onclick = () => api.windowAction("minimize");
+    $("windowMaximize").onclick = () => api.windowAction("toggleMaximize");
+    $("windowClose").onclick = () => api.windowAction("close");
+    api.onWindowMaximized((maximized) => {
+      const button = $("windowMaximize");
+      button.classList.toggle("is-maximized", maximized);
+      button.title = t(maximized ? "Восстановить окно" : "Развернуть");
+    });
+    document.querySelectorAll(".nav")''')
+
+
+def patch_window_shell_preload(code):
+    return replace_once(code, '  uiLoaded: () => import_electron.ipcRenderer.send("uiLoaded"),',
+        '''  uiLoaded: () => import_electron.ipcRenderer.send("uiLoaded"),
+  windowAction: (action) => import_electron.ipcRenderer.send("windowAction", action),
+  onWindowMaximized: (cb) => import_electron.ipcRenderer.on("windowMaximized", (_event, value) => cb(value)),''')
+
+
+def split_hls(code):
+    start = code.index("  // node_modules/.pnpm/hls.js@")
+    end = code.index("  // src/renderer/app.ts", start)
+    library = '"use strict";\n(() => {\n' + code[start:end] + "  window.KabanHls = Hls;\n})();\n"
+    return code[:start] + code[end:], library
+
+
+def patch_lazy_hls(code):
+    code = replace_once(code, '  var api = window.kaban;',
+        '''  var api = window.kaban;
+  let hlsModule;
+  function loadHls() {
+    hlsModule ??= new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "./hls.js";
+      script.onload = () => {
+        if (typeof window.KabanHls === "function") resolve(window.KabanHls);
+        else reject(new Error("HLS player could not be initialized"));
+      };
+      script.onerror = () => reject(new Error("HLS player could not be loaded"));
+      document.head.append(script);
+    }).catch((error) => {
+      hlsModule = null;
+      throw error;
+    });
+    return hlsModule;
+  }''')
+    return replace_once(code, '    playHls(url) {\n      this.hls?.destroy();',
+        '''    async playHls(url) {
+      const revision = this.loadSeq;
+      const Hls = await loadHls();
+      if (revision !== this.loadSeq) return;
+      this.hls?.destroy();''')
+
+
+def patch_asar(asar, version=None, ui_fix=False, youtube_single_pin=False):
     base = 8 + struct.unpack_from("<I", asar, 4)[0]
     length = struct.unpack_from("<I", asar, 12)[0]
     header = json.loads(asar[16:16 + length])
     body = bytearray()
     patches = {"dist/main.js": patch_main, "dist/renderer/app.js": patch_renderer}
+    hls_library = None
     if ui_fix:
         def read_packed(path):
             item = dict(entries(header["files"]))[path]
@@ -1042,16 +1675,24 @@ def patch_asar(asar, version=None, ui_fix=False):
             return asar[start:start + item["size"]].decode()
 
         host_renderer = read_packed("dist/renderer/app.js")
-        patches["dist/main.js"] = lambda code: patch_discord_art(patch_mini_main(patch_playlist_merge_main(
-            patch_windows_integration(patch_youtube_import_main(patch_main(code))))))
-        patches["dist/preload.js"] = lambda code: patch_mini_preload(replace_once(code, '  playlist: inv("playlist"),',
-            '  playlist: inv("playlist"),\n  importYoutubePlaylist: inv("importYoutubePlaylist"),\n  mergeExternalPlaylist: inv("mergeExternalPlaylist"),'))
-        patches["dist/renderer/app.js"] = lambda code: patch_ui_renderer(patch_renderer(code))
-        patches["dist/renderer/index.html"] = patch_ui_html
-        patches["dist/renderer/styles.css"] = patch_ui_css
+        _, hls_library = split_hls(host_renderer)
+        patches["dist/boot.js"] = patch_update_copy
+        patches["dist/main.js"] = lambda code: patch_startup_diagnostics(patch_native_window_startup(patch_window_shell_main(patch_startup_main(
+            patch_playback_stutter_main(patch_discord_art(patch_mini_main(patch_playlist_merge_main(
+                patch_windows_integration(patch_youtube_import_main(patch_main(code)))))))))))
+        patches["dist/preload.js"] = lambda code: patch_window_shell_preload(patch_startup_preload(patch_mini_preload(replace_once(code, '  playlist: inv("playlist"),',
+            '  playlist: inv("playlist"),\n  importYoutubePlaylist: inv("importYoutubePlaylist"),\n  mergeExternalPlaylist: inv("mergeExternalPlaylist"),'))))
+        patches["dist/renderer/app.js"] = lambda code: patch_window_shell_renderer(patch_lazy_hls(patch_startup_renderer(
+            patch_playback_stutter_renderer(patch_ui_renderer(patch_renderer(split_hls(code)[0]))))))
+        patches["dist/renderer/index.html"] = lambda code: patch_window_shell_html(patch_ui_html(code))
+        patches["dist/renderer/styles.css"] = lambda code: patch_typography_css(patch_window_shell_css(patch_ui_css(
+            replace_once(code, "--chrome: rgba(0, 0, 0, 0.82);", "--chrome: #000;"))))
         patches["dist/renderer/mini.html"] = patch_mini_html
         patches["dist/renderer/mini.css"] = patch_mini_css
         patches["dist/renderer/mini.js"] = lambda code: patch_mini_renderer(code, host_renderer)
+    if youtube_single_pin:
+        patch_existing_main = patches["dist/main.js"]
+        patches["dist/main.js"] = lambda code: patch_youtube_single_pin(patch_existing_main(code))
     if version:
         patches["package.json"] = lambda code: replace_once(
             code, '"version": "0.18.3"', f'"version": "{version}"'
@@ -1071,6 +1712,14 @@ def patch_asar(asar, version=None, ui_fix=False):
         item["offset"] = str(len(body))
         item["size"] = len(data)
         body.extend(data)
+    if hls_library is not None:
+        data = hls_library.encode()
+        digest = hashlib.sha256(data).hexdigest()
+        header["files"]["dist"]["files"]["renderer"]["files"]["hls.js"] = {
+            "size": len(data), "offset": str(len(body)),
+            "integrity": {"algorithm": "SHA256", "hash": digest, "blockSize": 4194304, "blocks": [digest]},
+        }
+        body.extend(data)
     encoded = json.dumps(header, separators=(",", ":"), ensure_ascii=False).encode()
     padded_length = (len(encoded) + 3) & ~3
     prefix = struct.pack("<4I", 4, 8 + padded_length, 4 + padded_length, len(encoded))
@@ -1080,21 +1729,24 @@ def patch_asar(asar, version=None, ui_fix=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", help="Set the app version and use the updater's ZIP filename")
-    parser.add_argument("--ui-fix", action="store_true", help="Build a separate local player-bar preview")
+    parser.add_argument("--ui-fix", action="store_true", help="Include all interface and playback updates")
+    parser.add_argument("--youtube-single-pin", action="store_true",
+                        help="Set tiny once before loading a YouTube track and log quality changes")
     args = parser.parse_args()
     version = args.version
     if version and not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         parser.error("--version must have the form major.minor.patch")
     output = ROOT / f"KabanMusic-{version}-win.zip" if version else OUTPUT
-    if args.ui_fix:
-        if not version:
-            parser.error("--ui-fix requires --version")
-        output = ROOT / f"KabanMusic-{version}-ui-fix-win.zip"
+    if args.ui_fix and not version:
+        parser.error("--ui-fix requires --version")
+    if args.youtube_single_pin and not args.ui_fix:
+        parser.error("--youtube-single-pin requires --ui-fix")
     temporary = output.with_suffix(".tmp")
     with zipfile.ZipFile(ORIGINAL) as source, zipfile.ZipFile(temporary, "x") as target:
         for item in source.infolist():
             if item.filename == "resources/app.asar":
-                target.writestr(item, patch_asar(source.read(item), version, args.ui_fix))
+                target.writestr(item, patch_asar(source.read(item), version, args.ui_fix,
+                                                args.youtube_single_pin))
             else:
                 with source.open(item) as src, target.open(item, "w") as dst:
                     shutil.copyfileobj(src, dst)
